@@ -31,7 +31,7 @@ from payment p, rental r, customer c, inventory i, film f
 where date(p.payment_date) = '2005-07-30' and p.payment_date = r.rental_date and r.customer_id = c.customer_id and i.inventory_id = r.inventory_id
 
 1) перечислите узкие места;
-2) оптимизируйте запрос: внесите корректировки по использованию операторов, при необходимости добавьте индексы.`
+2) оптимизируйте запрос: внесите корректировки по использованию операторов, при необходимости добавьте индексы. `
 
 <details>
   <summary>explain analyze запроса из задания 2</summary>
