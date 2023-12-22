@@ -33,6 +33,8 @@ where date(p.payment_date) = '2005-07-30' and p.payment_date = r.rental_date and
 1) перечислите узкие места;
 2) оптимизируйте запрос: внесите корректировки по использованию операторов, при необходимости добавьте индексы.`
 
+<details>
+  <summary>explain analyze запроса из задания 2</summary>
 
 ```
 CREATE INDEX
@@ -54,8 +56,9 @@ CREATE INDEX
                                 -> Single-row index lookup on customer using PRIMARY (customer_id=rental.customer_id)  (cost=250e-6 rows=1) (actual time=671e-6..761e-6 rows=1 loops=642000)
                             -> Single-row covering index lookup on inventory using PRIMARY (inventory_id=rental.inventory_id)  (cost=250e-6 1)1)rows=1) (actual time=556e-6..651e-6 rows=1 loops=642000)
 
-
 ```
+</details>
+
 1. `Читаем explain analyze построчно снизу вверх начиная с вложенных операций`
 2. `Начинается всё с join по индексам таблиц inventory, customer и поиск в таблице rental по индексу rental_date, который соответствует payment_date из таблицы payment. Это всё быстрые операции.`
 3. `Так же из-за того что мы явно не указали в join какие столцы с какими, он видимо использовал join по хеш функции. Достаточно быстрая операция`
