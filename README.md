@@ -71,6 +71,7 @@ CREATE INDEX idx_payment_date_payment_amount ON payment(payment_date, amount);
 <details>
   <summary>explain analyze после создания индекса в таблице payment</summary>
   
+  ```
   -> Limit: 200 row(s)  (cost=0..0 rows=0) (actual time=21849..21850 rows=200 loops=1)
     -> Table scan on <temporary>  (cost=2.5..2.5 rows=0) (actual time=21849..21850 rows=200 loops=1)
         -> Temporary table with deduplication  (cost=0..0 rows=0) (actual time=21849..21849 rows=391 loops=1)
@@ -88,6 +89,8 @@ CREATE INDEX idx_payment_date_payment_amount ON payment(payment_date, amount);
                                         -> Single-row covering index lookup on inventory using PRIMARY (inventory_id=rental.inventory_id)  (cost=0.25 rows=1) (actual time=0.00691..0.00698 rows=1 loops=16044)
                                     -> Filter: (cast(payment.payment_date as date) = '2005-07-30')  (cost=0.953 rows=1.02) (actual time=0.0192..0.0193 rows=0.04 loops=16044)
                                         -> Covering index lookup on payment using idx_payment_date_payment_amount (payment_date=rental.rental_date)  (cost=0.953 rows=1.02) (actual time=0.0102..0.0172 rows=3.06 loops=16044)
+
+  ```
 
 </details>
 
