@@ -99,8 +99,8 @@ CREATE INDEX idx_payment_date ON payment(payment_date);
 
 При повторном выполнении explain analyze мы видим что он использует созданный нами индекс и на этапе фильтрации получили ускорение фильтрации с показателей 0.114..61мс до 0.0449..21.8мс, но растеряли всё приэмущество на этапе поиск соответсвий между таблицами и получили дополнительное время на обработку.  9700-7620=2080.
 
-1. **12-05hw-2** 
-<img src = "img/12-05hw-2-1.png" width = 80%>
+1) **12-05hw-2** 
+<img src = "img/12-05hw-2-1.png" width = 100%>
 
 
 8. В нашем запросе в функции оконной агрегации идёт условие   "WHERE payment.payment_date >= '2005-07-30'" и оно связывается с "sum(payment.amount)", значит для ускорения мы можем в таблице payment создать индекс "payment_date_payment_amount"  
@@ -136,8 +136,8 @@ CREATE INDEX idx_payment_date_payment_amount ON payment(payment_date, amount);
 
 При повторном выполнении explain analyze мы так же видим что получили не только ускорение оконной агрегации на 4 секунды, но и Nested loop inner join, по скольку там идёт поиск соответсвий между таблицами 
 
-2. **12-05hw-2** 
-<img src = "img/12-05hw-2-2.png" width = 80%>
+2) **12-05hw-2** 
+<img src = "img/12-05hw-2-2.png" width = 100%>
 
 9. Можно изменить запрос и сделать запросы join явными, задать условие по дате 2005-07-30 и отсортировать вывод. Тогда на выполнение запроса нужны будут доли секунды
 
@@ -166,7 +166,7 @@ GROUP BY customer.customer_id, customer.last_name, customer.first_name;
 
 </details>
 
-3. **12-05hw-2** 
-<img src = "img/12-05hw-2-3.png" width = 80%>
+3) **12-05hw-2** 
+<img src = "img/12-05hw-2-3.png" width = 100%>
 
 ---
