@@ -37,7 +37,6 @@ where date(p.payment_date) = '2005-07-30' and p.payment_date = r.rental_date and
   <summary>explain analyze запроса из задания 2</summary>
 
 ```
-CREATE INDEX
 -> Limit: 200 row(s)  (cost=0..0 rows=0) (actual time=30450..30450 rows=200 loops=1)
     -> Table scan on <temporary>  (cost=2.5..2.5 rows=0) (actual time=30450..30450 rows=200 loops=1)
         -> Temporary table with deduplication  (cost=0..0 rows=0) (actual time=30450..30450 rows=391 loops=1)
@@ -66,7 +65,45 @@ CREATE INDEX
 5. Далее у нас идёт сортировка результатов перед применением оконной агрегации. Быстрая операция 12157..12614 мс
 6. И самая тяжелая операция - оконная агрегация с буфером. Суммирование платежей по каждому customer.customer_id и film.title 12157..29320 Тут он выполняет много лишней работы. Это тоже может стать точкой оптимизации, потому как нам достаточно лишь посчитать на запрошенную нами дату, а не всё подряд`
 
-7. В нашем запросе в функции оконной агрегации идёт условие   "where date(payment.payment_date) = '2005-07-30'" и оно связывается с "sum(payment.amount)", значит для ускорения мы можем в таблице payment создать индекс "payment_date_payment_amount"  
+7. В таблицах используемых для выполнения запроса для ускорения выполнения колонки по которым идёт сравнение должны быть проиндексированны.У нас в таблице не хватает проиндексированной колонки payment.payment_date. Значит для ускорения мы можем в таблице payment создать индекс "idx_payment_date". Так же мы можем уйти от преобразования каждой datatime к простой дате изменив условии where к непосредственному сравнению datatime 
+```
+CREATE INDEX idx_payment_date ON payment(payment_date);
+...WHERE payment.payment_date >= '2005-07-30' AND payment.payment_date < DATE_ADD('2005-07-30', INTERVAL 1 DAY) and.....
+
+```
+<details>
+  <summary>explain analyze после создания индекса в таблице payment по колонке payment.payment_date</summary>
+  
+  ```
+  -> Limit: 200 row(s)  (cost=0..0 rows=0) (actual time=32360..32361 rows=200 loops=1)
+    -> Table scan on <temporary>  (cost=2.5..2.5 rows=0) (actual time=32360..32361 rows=200 loops=1)
+        -> Temporary table with deduplication  (cost=0..0 rows=0) (actual time=32360..32360 rows=391 loops=1)
+            -> Window aggregate with buffering: sum(payment.amount) OVER (PARTITION BY customer.customer_id,film.title )   (actual time=14295..31262 rows=642000 loops=1)
+                -> Sort: customer.customer_id, film.title  (actual time=14295..14728 rows=642000 loops=1)
+                    -> Stream results  (cost=481735 rows=644864) (actual time=1.42..11221 rows=642000 loops=1)
+                        -> Nested loop inner join  (cost=481735 rows=644864) (actual time=1.29..9700 rows=642000 loops=1)
+                            -> Nested loop inner join  (cost=256032 rows=634000) (actual time=0.922..1955 rows=634000 loops=1)
+                                -> Nested loop inner join  (cost=192474 rows=634000) (actual time=0.91..1180 rows=634000 loops=1)
+                                    -> Inner hash join (no condition)  (cost=128915 rows=634000) (actual time=0.881..298 rows=634000 loops=1)
+                                        -> Filter: ((rental.rental_date >= TIMESTAMP'2005-07-30 00:00:00') and (rental.rental_date < <cache>(('2005-07-30' + interval 1 day))))  (cost=65.5 rows=634) (actual time=0.0449..21.8 rows=634 loops=1)
+                                            -> Covering index range scan on rental using rental_date over ('2005-07-30 00:00:00' <= rental_date < '2005-07-31 00:00:00')  (cost=65.5 rows=634) (actual time=0.035..10.8 rows=634 loops=1)
+                                        -> Hash
+                                            -> Covering index scan on film using idx_title  (cost=103 rows=1000) (actual time=0.0648..0.626 rows=1000 loops=1)
+                                    -> Single-row index lookup on customer using PRIMARY (customer_id=rental.customer_id)  (cost=250e-6 rows=1) (actual time=660e-6..764e-6 rows=1 loops=634000)
+                                -> Single-row covering index lookup on inventory using PRIMARY (inventory_id=rental.inventory_id)  (cost=250e-6 rows=1) (actual time=535e-6..632e-6 rows=1 loops=634000)
+                            -> Index lookup on payment using idx_payment_date (payment_date=rental.rental_date)  (cost=0.254 rows=1.02) (actual time=0.0091..0.0114 rows=1.01 loops=634000)
+
+  ```
+
+</details>
+
+При повторном выполнении explain analyze мы видим что он использует созданный нами индекс и на этапе фильтрации получили ускорение фильтрации с показателей 0.114..61мс до 0.0449..21.8мс, но растеряли всё приэмущество на этапе поиск соответсвий между таблицами и получили дополнительное время на обработку.  9700-7620=2080.
+
+1. **12-05hw-2** 
+<img src = "img/12-05hw-2-1.png" width = 80%>
+
+
+8. В нашем запросе в функции оконной агрегации идёт условие   "WHERE payment.payment_date >= '2005-07-30'" и оно связывается с "sum(payment.amount)", значит для ускорения мы можем в таблице payment создать индекс "payment_date_payment_amount"  
 
 ```
 CREATE INDEX idx_payment_date_payment_amount ON payment(payment_date, amount);
@@ -75,23 +112,23 @@ CREATE INDEX idx_payment_date_payment_amount ON payment(payment_date, amount);
   <summary>explain analyze после создания индекса в таблице payment</summary>
   
   ```
-  -> Limit: 200 row(s)  (cost=0..0 rows=0) (actual time=21849..21850 rows=200 loops=1)
-    -> Table scan on <temporary>  (cost=2.5..2.5 rows=0) (actual time=21849..21850 rows=200 loops=1)
-        -> Temporary table with deduplication  (cost=0..0 rows=0) (actual time=21849..21849 rows=391 loops=1)
-            -> Window aggregate with buffering: sum(payment.amount) OVER (PARTITION BY customer.customer_id,film.title )   (actual time=4299..20841 rows=642000 loops=1)
-                -> Sort: customer.customer_id, film.title  (actual time=4299..4716 rows=642000 loops=1)
-                    -> Stream results  (cost=1.6e+6 rows=15.7e+6) (actual time=573..1917 rows=642000 loops=1)
-                        -> Inner hash join (no condition)  (cost=1.6e+6 rows=15.7e+6) (actual time=573..988 rows=642000 loops=1)
-                            -> Covering index scan on film using idx_title  (cost=0.011 rows=1000) (actual time=0.0532..5.29 rows=1000 loops=1)
+-> Limit: 200 row(s)  (cost=0..0 rows=0) (actual time=21461..21461 rows=200 loops=1)
+    -> Table scan on <temporary>  (cost=2.5..2.5 rows=0) (actual time=21461..21461 rows=200 loops=1)
+        -> Temporary table with deduplication  (cost=0..0 rows=0) (actual time=21461..21461 rows=391 loops=1)
+            -> Window aggregate with buffering: sum(payment.amount) OVER (PARTITION BY customer.customer_id,film.title )   (actual time=3903..20414 rows=642000 loops=1)
+                -> Sort: customer.customer_id, film.title  (actual time=3903..4334 rows=642000 loops=1)
+                    -> Stream results  (cost=65734 rows=644864) (actual time=14.3..1479 rows=642000 loops=1)
+                        -> Inner hash join (no condition)  (cost=65734 rows=644864) (actual time=14.3..444 rows=642000 loops=1)
+                            -> Covering index scan on film using idx_title  (cost=0.164 rows=1000) (actual time=0.0852..5.69 rows=1000 loops=1)
                             -> Hash
-                                -> Nested loop inner join  (cost=27121 rows=15684) (actual time=1.74..571 rows=642 loops=1)
-                                    -> Nested loop inner join  (cost=10855 rows=15420) (actual time=0.454..256 rows=16044 loops=1)
-                                        -> Nested loop inner join  (cost=5458 rows=15420) (actual time=0.435..127 rows=16044 loops=1)
-                                            -> Table scan on customer  (cost=61.2 rows=599) (actual time=0.139..1.64 rows=599 loops=1)
-                                            -> Index lookup on rental using idx_fk_customer_id (customer_id=customer.customer_id)  (cost=6.44 rows=25.7) (actual time=0.146..0.204 rows=26.8 loops=599)
-                                        -> Single-row covering index lookup on inventory using PRIMARY (inventory_id=rental.inventory_id)  (cost=0.25 rows=1) (actual time=0.00691..0.00698 rows=1 loops=16044)
-                                    -> Filter: (cast(payment.payment_date as date) = '2005-07-30')  (cost=0.953 rows=1.02) (actual time=0.0192..0.0193 rows=0.04 loops=16044)
-                                        -> Covering index lookup on payment using idx_payment_date_payment_amount (payment_date=rental.rental_date)  (cost=0.953 rows=1.02) (actual time=0.0102..0.0172 rows=3.06 loops=16044)
+                                -> Nested loop inner join  (cost=1241 rows=645) (actual time=0.156..13.6 rows=642 loops=1)
+                                    -> Nested loop inner join  (cost=573 rows=634) (actual time=0.127..8.97 rows=634 loops=1)
+                                        -> Nested loop inner join  (cost=351 rows=634) (actual time=0.116..6.62 rows=634 loops=1)
+                                            -> Filter: ((rental.rental_date >= TIMESTAMP'2005-07-30 00:00:00') and (rental.rental_date < <cache>(('2005-07-30' + interval 1 day))))  (cost=129 rows=634) (actual time=0.0881..3.73 rows=634 loops=1)
+                                                -> Covering index range scan on rental using rental_date over ('2005-07-30 00:00:00' <= rental_date < '2005-07-31 00:00:00')  (cost=129 rows=634) (actual time=0.0783..1.05 rows=634 loops=1)
+                                            -> Single-row index lookup on customer using PRIMARY (customer_id=rental.customer_id)  (cost=0.25 rows=1) (actual time=0.00398..0.00405 rows=1 loops=634)
+                                        -> Single-row covering index lookup on inventory using PRIMARY (inventory_id=rental.inventory_id)  (cost=0.25 rows=1) (actual time=0.00308..0.00316 rows=1 loops=634)
+                                    -> Covering index lookup on payment using idx_payment_date_payment_amount (payment_date=rental.rental_date)  (cost=0.953 rows=1.02) (actual time=0.0049..0.00665 rows=1.01 loops=634)
 
   ```
 
@@ -99,8 +136,10 @@ CREATE INDEX idx_payment_date_payment_amount ON payment(payment_date, amount);
 
 При повторном выполнении explain analyze мы так же видим что получили не только ускорение оконной агрегации на 4 секунды, но и Nested loop inner join, по скольку там идёт поиск соответсвий между таблицами 
 
+2. **12-05hw-2** 
+<img src = "img/12-05hw-2-2.png" width = 80%>
 
-8.Можно изменить запрос и сделать запросы join явными, задать условие по дате 2005-07-30 и отсортировать вывод. Тогда на выполнение запроса нужны будут доли секунды
+9. Можно изменить запрос и сделать запросы join явными, задать условие по дате 2005-07-30 и отсортировать вывод. Тогда на выполнение запроса нужны будут доли секунды
 
 ```
 SELECT CONCAT(customer.last_name, ' ', customer.first_name), SUM(payment.amount)
@@ -126,5 +165,8 @@ GROUP BY customer.customer_id, customer.last_name, customer.first_name;
 
 
 </details>
+
+3. **12-05hw-2** 
+<img src = "img/12-05hw-2-3.png" width = 80%>
 
 ---
